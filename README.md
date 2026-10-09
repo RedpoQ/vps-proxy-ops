@@ -1,353 +1,95 @@
-# VPS 自建代理运维指南
+# VPS Proxy Ops — 用 Agent 判断 VPS 去留、快速部署、修复故障
 
-用 8 个 Agent Skills（智能体技能），按证据定位 VPS、3X-UI / Xray 与 Clash Verge / Mihomo 的代理故障，并通过隔离测试和端到端验收减少改坏现有链路的风险。
+**买了 VPS，先判断值不值得留；值得留，再部署最简单的稳定代理；出了故障，让 Agent 尽量自己检查并恢复。**
 
-`vps-proxy-ops` · VPS Proxy Ops · 面向中文用户 · [English](README.en.md)
+面向个人自建代理的轻量 Agent 工作流，复用本地 Shell、现成 SSH 连接、3X-UI / Xray 与 Clash Verge / Mihomo。项目重点是**决策和实际验证**，而不是新的 VPS 跑分软件、节点大全或八阶段必走流程。
 
-## 适用场景
+## 从你的问题开始
 
-- 买了第一台 VPS，不知道该从哪里下手排查。
-- 节点突然连不上，搞不清是 VPS 路由、面板、Xray，还是客户端规则出了问题。
-- 正在使用 Windows，或部分验证过的 Linux 客户端，搭配 3X-UI + Xray 与 Clash Verge / Mihomo。
-- 想测试 Reality、Hysteria2、TUIC、XHTTP 等传输方式，但不想碰坏正在用的生产节点。
-- 需要接入 Cloudflare、处理 TLS 证书、配置静态或住宅出口，或者调整 TUN 与 Fake-IP。
-- 让 AI Agent 协助排障，但要求 Agent 按顺序找证据，不能盲目修改生产环境。
+| 你想解决什么 | Agent 工作流 | 最终得到 |
+| --- | --- | --- |
+| 刚买 VPS，担心线路差、晚高峰不稳、退款来不及 | [Evaluate：VPS 去留](workflows/evaluate.md) | KEEP / RETEST / REFUND_CANDIDATE，附决定性证据 |
+| VPS 值得留下，想尽快有一条稳定节点 | [Deploy：最小部署](workflows/deploy.md) | 已验证的最小工作路径，或明确阻塞项 |
+| XHTTP、HY2、Cloudflare、面板或客户端突然异常 | [Repair：故障恢复](workflows/repair.md) | 故障层、证据、经授权的修复与复测 |
 
-## 30 秒 Quick Start
+已有线路、运营商、协议、Shadow Test 和出口分流经验都保留在 [8 个专门 Skills](skills/) 中，**需要哪部分才读哪部分**，不必每次执行完整生命周期。
 
-将本仓库下载或克隆到本地，让能读取本地文件的 Agent 执行下面的提示词：
+## 快速开始：让 Agent 尽量自己做
 
-```bash
+~~~bash
 git clone https://github.com/RedpoQ/vps-proxy-ops.git
-```
-
-```text
-请读取 vps-proxy-ops/README.md 和
-vps-proxy-ops/skills/proxy-stack-lifecycle/SKILL.md，按该 Skill 开始只读梳理。
-先询问缺失的客户端、VPS、面板与故障现象信息，确认 Agent 是否依赖当前代理。
-输出事实、推断、未知、当前生命周期阶段、阻塞项与下一步 Skill。
-不要索取密码、私钥或完整订阅；不要安装软件、重启服务或修改生产配置。
-涉及变更时，先给出基线、备份、回滚与验证方案，再等待我的明确授权。
-```
-
-这一步开始的是工作流梳理。若 Agent 无法读取本地文件，先打开下方 Skill 入口阅读；当前 portable plugin 安装与模型自动激活验证仍未完成。已集成 Skills 的 Agent 可按名称调用 `proxy-stack-lifecycle`。
-
-## 8 个 Skills 路由表
-
-状态不明时从总入口开始；问题明确时直接进入对应 Skill，只加载该分支需要的参考资料。
-
-| 遇到这类情况 | 先用这个 Skill | 它做什么 |
-| :--- | :--- | :--- |
-| 新部署、状态不明，或不知道从哪里开始 | [`proxy-stack-lifecycle`](skills/proxy-stack-lifecycle/SKILL.md) | 只读梳理资源、当前阶段与 Agent 代理依赖，选择下一步 |
-| 评估 VPS 地区或线路，或者连接很慢 | [`vps-region-fit`](skills/vps-region-fit/SKILL.md) | 测量 RTT、抖动、丢包、TCP/TLS、UDP 可达性和路径污染，用数据比较线路 |
-| SSH 能连，但系统时钟、DNS 或基础网络行为异常 | [`vps-baseline`](skills/vps-baseline/SKILL.md) | 检查 Linux VPS 正确性，确认 resolver ownership、网卡与路由状态，不做无证据调优 |
-| 面板显示正常，但订阅拉出来的节点连不上 | [`xui-xray-stack`](skills/xui-xray-stack/SKILL.md) | 梳理 3X-UI、持久化 DB、模板、Xray runtime 与订阅投影之间的断点 |
-| 想尝试新协议，担心把现有可用节点搞崩 | [`proxy-transport-lab`](skills/proxy-transport-lab/SKILL.md) | 使用 Shadow Test 隔离测试，单变量对比，Shadow 通过后，经授权再做少量生产 smoke test |
-| 某些网站需要固定 IP 或住宅代理分流 | [`special-egress-routing`](skills/special-egress-routing/SKILL.md) | 核对服务端专用出口，并反向验证普通流量没有误走特殊出口 |
-| 节点连通，但浏览器打不开网页，或 TUN 抓不到流量 | [`proxy-client-governance`](skills/proxy-client-governance/SKILL.md) | 治理 Clash Verge / Mihomo，理清 TUN、Fake-IP 与分流规则 |
-| 以为修好了，想确认整条链路到底能不能交付 | [`proxy-stack-acceptance`](skills/proxy-stack-acceptance/SKILL.md) | 执行端到端验收；阻塞性验收项通过后，决定是否进入 `FREEZE` |
-
----
-
-## 证据驱动的方法论
+cd vps-proxy-ops
+~~~
 
-面板显示正常，不代表配置生成正确；生成配置写对了，不代表运行时已经加载生效；运行时显示在线，真实流量依然可能在客户端规则、DNS 或运营商线路上出问题。
+在**能使用本机 Shell/SSH 的 Agent** 中打开这个仓库。对于能够识别仓库级 AGENTS.md 的客户端，会读取 [AGENTS.md](AGENTS.md) 中的执行原则；其他 Agent 请先显式要求它读取该文件。不同 Agent 的自动读取/Plugin 安装行为尚未逐一验证。
 
-本项目按照下面的证据层级判断问题：
+例如直接提出：
 
-```text
-Declared configuration（面板填写配置）
-↓
-Generated configuration（落盘生成配置）
-↓
-Runtime state（进程运行时状态）
-↓
-Observed traffic（观测到的真实流量）
-```
+> 我刚买了一台 VPS，SSH 别名已经配置好。请根据 AGENTS.md 和 workflows/evaluate.md，先只读检查我的实际运营商线路、UDP、使用需求与退款时间，判断值得保留还是需要复测。能通过工具执行的检查请自己执行，不要让我反复复制输出。
 
-验收时优先采用更靠近运行结果的证据。真实流量最有参考价值，但测量前仍要检查 TUN、VPN、系统代理、ProxyCommand 等是否污染了测试路径。
+或：
 
-先确认问题出在哪一层，再改哪一层。改动前留下基线与备份，改动后保留回滚路径。
+> 其他节点正常，只有 XHTTP 经过 Cloudflare 不通。请按 workflows/repair.md 进行最小差异诊断，不要修改现有节点。
 
-**本项目不包含以下内容：**
+**本地密钥怎么用？** Agent 优先复用已有 ~/.ssh/config 和 ssh-agent，通过 OpenSSH 调用主机别名；私钥和 API Token 不放入本项目、聊天或公开仓库。若 Agent 在云端且无权访问你的本机，无法凭文档自动连接 VPS，必须先建立实际授权通道。
 
-- **不把一键脚本作为主要交付方式**：不同环境之间差异很大，直接跳过中间状态会增加排障难度。
-- **不分享免费节点**：不收集、不分发任何代理节点。
-- **不推荐 VPS 厂商**：VPS 表现取决于本地 ISP、机房网络、运营商互联和实际路由，按实测结果选地区与线路。
-- **不做协议排行榜**：某次测试中的协议赢家不会被推广成所有地区、运营商和时间段的结论。
-- **不把功能可用等同于安全加固完成**：`FUNCTIONAL_READY` 与 `SECURITY_HARDENED` 分开判断。
+## 如何判断 VPS 去留？
 
----
+**不为跑分而跑分。** 先核对真实 ISP、应用需求、价格与退款期限，然后按成本从低到高收集决定性证据：
 
-## 路由与生命周期
+1. 硬条件：VPS 权限、价格、流量、运营商政策、地址和 UDP 需求。
+2. 用户真实网络 → VPS 的延迟、丢包、路由与协议可达性；VPS → 目标网站另行测量。
+3. 只有数据不足时，再使用已安装的 mtr、iperf3、NextTrace、BackTrace、ECS 或 YABS；安装、重负载测试或外部上传前确认影响与授权。
+4. 依真实用途给出 KEEP、RETEST 或 REFUND_CANDIDATE。未测晚高峰时不能假装证明晚高峰稳定，也不能保证服务商退款。
 
-先完成基线与最小可用代理，按需进入实验或特殊出口分支，再做客户端集成和验收；已知故障从路由表直达对应 Skill。
+示例（**格式示意，非实测**）：
 
-```mermaid
-flowchart TD
-    A["能力与安全发现 · proxy-stack-lifecycle"] --> B["线路适配 · vps-region-fit"]
-    B --> C["VPS 基线 · vps-baseline"]
-    C --> D["控制面 / 数据面 · xui-xray-stack"]
-    D --> E["最小可用代理"]
-    E --> F["客户端集成 · proxy-client-governance"]
-    E -. "按需：隔离实验" .-> T["proxy-transport-lab"]
-    E -. "按需：服务端特殊出口" .-> R["special-egress-routing"]
-    T -. "经授权集成与 smoke" .-> F
-    R -. "验证普通流量隔离" .-> F
-    F --> G["端到端验收 · proxy-stack-acceptance"]
-    G --> H["阻塞项通过后 FREEZE"]
-```
+~~~text
+DECISION=RETEST
+DECISIVE_FACTS=基础资源满足需求，日间 TCP 可达
+UNVERIFIED_OR_CONTAMINATED=真实用户 ISP 的晚高峰与 HY2 握手尚未验证
+NEXT_SMALLEST_ACTION=在退款期内从实际使用网络完成一次定向复测
+~~~
 
----
+## 技术选择：够用就停止
 
-## 8 阶段运维生命周期
+~~~text
+客户端 → 单条经验证的入站协议 → VPS / Xray → Direct
+                                           └→ 可选 WARP / 固定 SOCKS5
+~~~
 
-整个代理栈按顺序推进。前置阶段没跑通时，先别急着跳到后面调参。
+HY2、REALITY、TUIC、XHTTP 是按实际情况选择或比较的协议，不是必须全部安装。WARP 与固定 SOCKS5 是**可选出口**，不会自动让 IP 更干净；它们不解决所有入口协议故障。3X-UI 是 Xray 的管理面板，sing-box 是另一种内核，不能把两者当作同一层替代品。
 
-```text
-1. 能力与安全条件发现 (Capability & Safety Discovery)
-   ↓
-2. 线路与地区适配 (VPS Region / Path Fit)
-   ↓
-3. VPS 基础正确性 (VPS Correctness Baseline)
-   ↓
-4. 控制面与数据面治理 (Control / Data Plane: 3X-UI + Xray)
-   ↓
-5. 建立最小可用代理 (Minimal Working Proxy)
-   ↓
-6. 客户端规则与分流接入 (Client Integration)
-   ↓
-7. 端到端验收 (End-to-End Acceptance)
-   ↓
-8. 固化，停止无意义调优 (Freeze)
-```
+部署与生产修复遵循：明确目标 → 当前基线 → 备份与独立回滚 → **用户批准具体变更** → 验证 → 停止。特别保护正在承载 Agent 连接的节点，不做破坏性 Fail-Closed 测试。
 
-1. **能力与安全条件发现**：识别当前网络环境、VPS 规格、域名解析权及客户端工具。判断当前排查会话是否借由该 VPS 代理通信，防止操作中途把自己踢下线。
-2. **线路与地区适配**：拿本地真实 ISP 去测目标机房。地区好坏是测出来的，不是按地图距离猜出来的。
-3. **VPS 基础正确性**：排查系统时钟、DNS Resolver 归属、默认路由、IPv4/IPv6、包管理和 failed systemd units。
-4. **控制面与数据面**：从持久化 DB 与模板开始，核对控制面生成结果、Xray runtime 与订阅投影。
-5. **建立最小可用代理**：先跑通最简单的一条基线节点。基础节点不通时，不要急着叠复杂反代或分流。
-6. **客户端接入**：接入 Clash Verge / Mihomo，处理 TUN、DNS、Fake-IP 映射与规则组。
-7. **端到端验收**：覆盖服务端基线、协议握手、订阅解析、客户端路由、出口是否符合预期、Fail-Closed 与回滚能力。
-8. **固化**：阻塞性验收项通过，剩余缺口均为非阻塞项，且没有新的故障证据或业务需求时，进入 `FREEZE`。
+## 已有专业资料（按需阅读）
 
----
+| 需要深入时 | 对应资料 |
+| --- | --- |
+| 状态不明、协调任务 | [proxy-stack-lifecycle](skills/proxy-stack-lifecycle/SKILL.md) |
+| VPS 地区、ISP 与路由测量 | [vps-region-fit](skills/vps-region-fit/SKILL.md) |
+| Linux 系统与 DNS | [vps-baseline](skills/vps-baseline/SKILL.md) |
+| 3X-UI、Xray、订阅与运行时 | [xui-xray-stack](skills/xui-xray-stack/SKILL.md) |
+| HY2 / REALITY / TUIC / XHTTP 隔离比较 | [proxy-transport-lab](skills/proxy-transport-lab/SKILL.md) |
+| WARP / 静态 SOCKS5 等特殊出口决策 | [special-egress-routing](skills/special-egress-routing/SKILL.md) |
+| Clash Verge / Mihomo 的 DNS、TUN、分流 | [proxy-client-governance](skills/proxy-client-governance/SKILL.md) |
+| 真实端到端结果、停止调优 | [proxy-stack-acceptance](skills/proxy-stack-acceptance/SKILL.md) |
 
-## 8 个 Skills 说明
+## 目前能做什么，尚不能保证什么？
 
-每个 Skill 对应项目中的独立目录，目录名保持原样不变。
+- **已有：** 面向 Agent 的任务说明、8 个专业 Skills、静态仓库检查、合成案例、完整的证据与回滚方法。适用于 Agent 在实际拥有 Shell/SSH 等工具时，指导它执行授权操作。
+- **尚未证明：** 任意 Agent 的自动安装和自动激活、全部平台的无人干预部署、真实 VPS 自动故障修复、跨 ISP 的普适协议性能排名。
+- **支持范围：** 3X-UI / Xray、Windows Clash Verge/Mihomo 和 Linux VPS 有特定环境参考；Linux 客户端为部分参考，macOS 与 OpenWrt 自动化未做完整生产验证。
+- **外部工具：** ECS、NextTrace、YABS、mtr 等**不是本项目内置的依赖**。安装和联网测速可能消耗流量、磁盘/CPU或向第三方发送测试信息。
 
-### proxy-stack-lifecycle
+运行现有只读静态检查：
 
-项目总入口。负责判断当前链路所处阶段、用户手里有哪些资源、Agent 与代理之间的依赖关系，以及下一步应该进入哪个 Skill。它只做研判与调度，不直接修改生产环境。
+~~~bash
+python tests/check_repository.py
+~~~
 
-### vps-region-fit
+它检验仓库结构、相对链接及一些敏感信息模式，**不会**连接 VPS 或证明自动部署和 Skill 激活成功。
 
-负责本地网络到 VPS 机房的实际链路测试。测量 RTT、Jitter（抖动）、丢包率、TCP/TLS、UDP 可达性，并检查 TUN、VPN、系统代理等是否污染测量路径。
+详见 [架构](docs/architecture.md)、[证据处理](docs/evidence-inventory.md)、[安全说明](SECURITY.md)、[贡献指南](CONTRIBUTING.md)。英文版：[README.en.md](README.en.md)。本项目当前仍为 v0.1 工作流项目，不应被理解为已发布的全自动运维软件。
 
-原则很简单：**Region selection is measured, not guessed.**
-
-### vps-baseline
-
-负责 Linux VPS 的基础环境正确性排查。检查系统时间、DNS resolver ownership、路由表、IPv4/IPv6、包管理器、资源占用、失败服务和网卡计数器。
-
-默认不做无证据的 sysctl 调优，不凭单个 counter 调 socket buffer，不盲猜 MTU，也不因为“大家都这么配”就强制切换 BBR。
-
-### xui-xray-stack
-
-当前 v0.1 实现的控制面适配器是 3X-UI + Xray。
-
-它按照下面的 source-of-truth 关系排查：
-
-```text
-持久化 DB
-→ Template
-→ 控制面生成配置
-→ Xray runtime
-→ Subscription projection
-```
-
-覆盖域名角色、TLS/ACME、Cloudflare、Xray runtime 与订阅投影。不要只看一份 `config.json` 就判断 Xray 当前运行状态。
-
-### proxy-transport-lab
-
-负责受控实验，包括 Reality、Hysteria2、TUIC、XHTTP，以及 Cloudflare 默认 Edge 与 preferred edge 的对照。
-
-测试遵循单变量原则。客户端优先使用独立 Shadow 进程、独立临时配置和 localhost 高位端口；服务端如需测试新协议，使用独立 candidate inbound/tag，不替换现有生产入口。
-
-Shadow PASS 后，再用真实客户端做少量 production smoke test，并验证 TUN、DNS 和路由。
-
-### special-egress-routing
-
-负责特殊出口分流，适用于静态 IP、住宅 IP、二级 SOCKS5 或特定业务专属出口。
-
-除了验证目标流量确实走了特殊出口，还要反向检查普通流量没有误走特殊出口。
-
-### proxy-client-governance
-
-负责客户端流量接管与规则治理。
-
-Windows 侧已有较完整的 Clash Verge / Mihomo 参考流程；Linux 客户端目前只有部分路径经过验证。排查范围包括 TUN、DNS、Fake-IP、规则组、生成配置、运行时和最终流量。
-
-### proxy-stack-acceptance
-
-负责最终端到端验收。
-
-检查服务端基线、线路质量、控制面一致性、传输握手、服务端路由、订阅格式、客户端解析、TUN、DNS、客户端分流、出口是否符合预期、Fail-Closed 与备份回滚能力。
-
-阻塞性验收项通过，剩余问题都属于非阻塞缺口，而且没有新的故障证据或需求时，执行 `FREEZE=YES`。
-
----
-
-## 几个常用方法
-
-### Shadow Test（影子测试）
-
-只有一台 VPS 和一台日常电脑时，也可以把测试路径和生产路径分开。
-
-```text
-生产路径
-→ 保持现有入口不变
-
-Shadow 测试路径
-→ 独立进程
-→ 独立临时配置
-→ 独立 localhost 高位端口
-→ TUN OFF
-→ System Proxy OFF
-→ 只有显式测试请求经过它
-```
-
-如果服务端需要新增候选协议，创建独立 candidate inbound/tag，不替换正在工作的入口。
-
-客户端只让显式指定端口的测试请求进入 Shadow，例如：
-
-```bash
-curl -x socks5h://127.0.0.1:<TEST_PORT> https://example.com
-```
-
-Shadow Test 隔离的是应用层测试，不会模拟第二个 ISP 或第二条物理网络。Shadow PASS 后，再用真实客户端做 3 到 5 次 production smoke test，并检查 TUN、DNS 和路由。
-
-### 一次只改一个变量
-
-不要把换协议、改 DNS、换 TUN stack、调 MTU 和改分流规则堆在一次修改里。
-
-一次只改一个主要变量。测完、对比、记录，再决定下一项。
-
-### 消融（Ablation）
-
-如果拿掉某个复杂配置层以后，端到端验收仍然通过，就保留更简单的结构。
-
-这条规则适用于额外反代、复杂重写、全局脚本、特殊 DNS 层和其它可选组件。
-
-### 复杂度预算（Complexity Budget）
-
-Cloudflare、额外 DNS、特殊出口和自动化脚本都会增加故障面、维护成本和 ownership 复杂度。
-
-如果一项改动既没有解决明确需求，也没有带来可验证收益，就不保留。
-
-### 自适应测试（Adaptive Testing）
-
-日常不用每次都挂 24 小时压测：
-
-- **L0**：配置静态检查与语法解析。
-- **L1**：3 到 5 次快速 smoke test。
-- **L2**：采样 20 到 50 次，耗时约 5 到 15 分钟，作为日常默认级别。
-
-只有 L2 出现间歇性失败、指标波动很大，或者两个候选难分时，才升级到 L3（30 到 60 分钟）或 L4（long soak）。
-
----
-
-## 当前支持状态
-
-| 模块 / 平台 | 支持状态 | 状态说明 |
-| :--- | :--- | :--- |
-| Windows 客户端治理（Clash Verge / Mihomo） | `ENV_SPECIFIC_REFERENCE` | 来自实际 Windows 环境核对，不能推论所有系统版本和网络环境完全相同 |
-| Linux VPS 基础正确性检查 | `ENV_SPECIFIC_REFERENCE` | 来自特定真实 Linux VPS 环境，不能推论覆盖所有发行版、内核或虚拟化架构 |
-| 3X-UI + Xray | `ENV_SPECIFIC_REFERENCE` | 来自真实环境核对；当前只实现这一控制面适配器 |
-| Shadow Mihomo 测试模式 | `ENV_SPECIFIC_REFERENCE` | 已在现有环境验证基本模式；不同平台的进程、端口和路由行为仍需分别确认 |
-| Linux 客户端 | `PARTIAL_REFERENCE` | 只有部分环境和路径有真实测试证据 |
-| macOS | `UNVERIFIED` | 尚无完整端到端生产验证 |
-| OpenWrt | `UNVERIFIED_OPTIONAL` | 当前没有标准化生产验证 |
-
-- `ENV_SPECIFIC_REFERENCE`：有真实环境证据并经过核对，但属于特定环境样本，不代表适配所有机型、版本和 ISP。
-- `PARTIAL_REFERENCE`：只有部分路径有真实证据，证据链还不完整。
-- `UNVERIFIED / UNVERIFIED_OPTIONAL`：当前没有完整生产验收证据。
-
----
-
-## 安全与敏感信息
-
-提交 Issue、PR、日志或向 AI 发送排查上下文时，不要附带真实敏感凭据：
-
-- VPS 真实公网 IP、真实解析域名
-- 真实部署端口布局、非公开管理端口和面板隐藏路径
-- SSH 用户名、密码、私钥
-- UUID、Reality / TLS 等私密密钥材料
-- Hysteria2 / TUIC 的密码和验证 secret
-- 包含 token 的完整订阅地址
-- Cloudflare API token / Global API Key
-- 静态 / 住宅出口服务商的账号、密码和真实出口信息
-
-公开示例使用：
-
-- 域名：`example.com`
-- IPv4：RFC 5737 TEST-NET，例如 `192.0.2.0/24`、`198.51.100.0/24`、`203.0.113.0/24`
-- 文本占位符：`<REDACTED_IP>`、`<REDACTED_DOMAIN>`、`<REDACTED_SECRET>`
-
-TEST-NET 只用于文档和 fixture。真实网络测量应使用你拥有、获授权或服务商明确提供的实际测试端点。
-
-详细规则见 [Secret Handling](docs/methodology/secret-handling.md)。
-
----
-
-## v0.1 当前边界与已知缺口
-
-使用前先确认这些范围：
-
-- **没有通用全自动一键部署框架**：v0.1 提供工作流、安全边界和回滚原则，不提供通用生产自动化。
-- **控制面适配有限**：当前实现 3X-UI + Xray。其它控制面可以参考通用方法论，但仓库还没有对应适配器。
-- **不做系统级 VPS 极限调优**：`vps-baseline` 只处理 correctness；实验性调优必须隔离、单变量、可测量、可回滚。
-- **macOS 与 OpenWrt 尚未验证**：相关系统没有形成完整生产证据链。
-- **验证工具链仍有缺口**：portable plugin install smoke、真正的模型 Skill activation eval，以及更广泛的多 ISP / 多平台实机验收尚未完成。
-
----
-
-## 深入文档
-
-- [系统架构概览](docs/architecture.md)
-- [生命周期](docs/lifecycle.md)
-- [证据等级与记录方式](docs/evidence-inventory.md)
-- [证据层级](docs/methodology/evidence-hierarchy.md)
-- [Shadow Test](skills/proxy-transport-lab/references/shadow-testing.md)
-- [3X-UI / Xray Source of Truth](skills/xui-xray-stack/references/source-of-truth.md)
-- [特殊出口与路由隔离](skills/special-egress-routing/references/route-isolation.md)
-
----
-
-## 项目状态
-
-当前为 **v0.1 release candidate**。
-
-已完成：
-
-- 8 个 Skills 静态校验
-- 相对链接检查
-- Secret 静态扫描
-- Skill 边界与冲突案例
-- 合成测试 fixtures
-- 仓库级静态检查器
-
-仍未完成：
-
-- portable plugin 安装 smoke test
-- 真正的模型 Skill activation eval
-- 更广泛的 macOS / OpenWrt / 多 ISP 实机验收
-
-项目当前以 **knowledge + workflow first** 为定位，不是生产自动部署器。
-
----
-
-## License
-
-[MIT](LICENSE)
+[MIT License](LICENSE)。
