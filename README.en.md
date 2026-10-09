@@ -1,135 +1,61 @@
-# vps-proxy-ops
+# VPS Proxy Ops — evaluate, deploy and repair with an Agent
 
-Use eight Agent Skills to diagnose self-hosted VPS proxy issues across 3X-UI / Xray and Clash Verge / Mihomo, then validate changes with isolated tests and end-to-end acceptance.
+**Decide whether to keep a VPS first. Deploy one stable proxy path only if it is worth keeping. Diagnose failures without breaking working nodes.**
 
-[中文说明](README.md) · Chinese-first VPS Proxy Ops
+This is a lightweight, decision-first workflow for personal self-hosted proxy setups. It reuses tools the Agent actually has: local shell, existing OpenSSH, 3X-UI/Xray and Clash Verge/Mihomo. It does not introduce another benchmark engine, mandatory WARP, or an eight-stage checklist that every task must follow.
 
-## When to use
+## Pick one job
 
-- Start or troubleshoot a VPS proxy stack when the failing layer is unclear.
-- Reconcile panel state, subscriptions, Xray runtime, client DNS, TUN, and rules.
-- Compare Reality, Hysteria2, TUIC, XHTTP, or Cloudflare edges through isolated tests.
-- Validate server-side static/residential egress and ordinary-route isolation.
+| User intent | Workflow | Result |
+| --- | --- | --- |
+| New VPS, route/ISP quality, refund deadline | [Evaluate](workflows/evaluate.md) | KEEP / RETEST / REFUND_CANDIDATE with evidence |
+| Accepted VPS, need a working personal proxy | [Deploy](workflows/deploy.md) | One validated working path, or a concrete blocker |
+| Broken protocol, Xray, Cloudflare or client route | [Repair](workflows/repair.md) | Fault isolation, authorized change, verified recovery |
 
-Windows client workflows and Linux VPS checks are environment-specific references; Linux client coverage is partial. See the support matrix below.
+## Quick start
 
-## 30-second Quick Start
-
-Download or clone this repository, then give an Agent with local file access this prompt:
-
-```bash
+~~~bash
 git clone https://github.com/RedpoQ/vps-proxy-ops.git
-```
+cd vps-proxy-ops
+~~~
 
-```text
-Read vps-proxy-ops/README.en.md and
-vps-proxy-ops/skills/proxy-stack-lifecycle/SKILL.md. Start with read-only discovery.
-Ask for missing client, VPS, panel, and symptom information; check whether the Agent
-uses the proxy being investigated. Report facts, inferences, unknowns, lifecycle
-stage, blockers, and the next Skill. Do not request passwords, private keys, or
-full subscriptions. Do not install software, restart services, or change production
-configuration. Present baseline, backup, rollback, and validation before any change,
-and wait for my explicit authorization.
-```
+Open the repository in an Agent with **actual shell/SSH access**. Clients that recognize repository-level [AGENTS.md](AGENTS.md) can follow its guidance; other clients must be instructed to read that file explicitly. Portable Plugin installation and autonomous Skill activation have not been verified across clients.
 
-This starts workflow discovery. If local files are inaccessible, open a linked Skill below for manual reading. Portable plugin installation and automatic model activation remain unverified. Agents with existing Skills integration can invoke `proxy-stack-lifecycle` by name.
+Example user prompt:
 
-## Eight-Skill routing table
+> My VPS is new and my SSH alias is ready. Follow AGENTS.md and workflows/evaluate.md. Use the tools you actually have to inspect the VPS and my real ISP path without making changes. Decide KEEP, RETEST or REFUND_CANDIDATE, noting the refund deadline and missing evidence. Do not ask me to paste output you can retrieve yourself.
 
-Start at the lifecycle entry for ambiguous work; route a clearly bounded problem directly to its owner and load only the references needed for that branch.
+For failures:
 
-| Skill | Responsibility |
-|---|---|
-| [`proxy-stack-lifecycle`](skills/proxy-stack-lifecycle/SKILL.md) | Discover the current stage, constraints, blockers, and next workflow without mutating systems. |
-| [`vps-region-fit`](skills/vps-region-fit/SKILL.md) | Measure contamination-aware user-to-region and VPS-to-destination path quality. |
-| [`vps-baseline`](skills/vps-baseline/SKILL.md) | Establish Linux VPS correctness before protocol work or tuning. |
-| [`xui-xray-stack`](skills/xui-xray-stack/SKILL.md) | Govern the implemented 3X-UI + Xray adapter and its source-of-truth layers. |
-| [`proxy-transport-lab`](skills/proxy-transport-lab/SKILL.md) | Run isolated transport experiments, benchmarks, ablations, and progressive tests. |
-| [`special-egress-routing`](skills/special-egress-routing/SKILL.md) | Prove both positive special routing and negative ordinary-route isolation. |
-| [`proxy-client-governance`](skills/proxy-client-governance/SKILL.md) | Reconcile application settings, generated config, runtime, and observed client traffic. |
-| [`proxy-stack-acceptance`](skills/proxy-stack-acceptance/SKILL.md) | Decide readiness, security status, remaining gaps, rollback confidence, and freeze. |
+> Other nodes still work, but XHTTP behind Cloudflare fails. Follow workflows/repair.md. Compare the failing path with a working control; do not change production without approval.
 
-## Evidence-driven framework
+The Agent should reuse the user's SSH configuration/agent, **not copy or request private keys**. A cloud-only chat without local access cannot discover your computer's SSH credentials automatically.
 
-A staged, evidence-driven operational framework for building, testing, governing, and freezing self-hosted proxy stacks.
+## Method: minimal evidence, decisive result
 
-This project addresses a common operational problem: a proxy can appear correct in a panel or configuration file while its generated configuration, runtime state, client projection, or observed traffic says otherwise. The repository supplies eight composable Skills that make those layers explicit and keep production changes behind evidence and rollback gates.
+Evaluate actual client-to-VPS performance separately from VPS-to-target performance. Look at the user's ISP, application goals, plan cost and refund terms before selecting tests. Reuse installed native tools and, where relevant, mtr, NextTrace, BackTrace, iperf3, ECS or YABS. These are **not bundled tools**; installers, heavy benchmarks and third-party uploads need appropriate review and approval.
 
-It is not a turnkey installer, a provider recommendation, a performance-ranking claim, or a security-hardening substitute. It ships no MCP server, credentials, production scripts, or default infrastructure topology.
+A good result may stop after a hard requirement failure. If the important peak-hour or real protocol test has not been run, report RETEST, not a fictitious performance verdict.
 
-## Core lifecycle
+For deployment prefer one verified inbound through Xray with VPS Direct egress. Additional inbound protocols, WARP or fixed SOCKS5 are optional responses to demonstrated requirements. The current documented control-plane reference is 3X-UI + Xray; sing-box is a separate core, not another name for 3X-UI.
 
-1. Capability and safety discovery
-2. User network to VPS region/path fit
-3. VPS correctness baseline
-4. Control/data plane bootstrap
-5. Minimal working proxy
-6. Client integration
-7. End-to-end acceptance
-8. Freeze
+## Existing specialist Skills
 
-Conditional capabilities branch from this lifecycle only when needed: domain/DNS/TLS under the implemented 3X-UI + Xray adapter, Cloudflare edge reasoning where applicable, protocol and preferred-edge experiments, shadow testing, benchmark methodology, special egress routing, subscription projection, and client governance.
+All eight original Skills remain available as optional technical references: [lifecycle](skills/proxy-stack-lifecycle/SKILL.md), [region/ISP](skills/vps-region-fit/SKILL.md), [Linux baseline](skills/vps-baseline/SKILL.md), [3X-UI/Xray](skills/xui-xray-stack/SKILL.md), [transport experiments](skills/proxy-transport-lab/SKILL.md), [special egress](skills/special-egress-routing/SKILL.md), [client routing](skills/proxy-client-governance/SKILL.md), and [acceptance](skills/proxy-stack-acceptance/SKILL.md). Load only what the current task requires.
 
-Cross-cutting methodology includes baseline-before-mutation, capability discovery, pollution audits, evidence hierarchy, source-of-truth separation, one-variable experiments, controls, shadow testing, ablation, progressive evidence, complexity budgets, secret redaction, backup/rollback, fail-closed verification, explicit uncertainty, and freeze-after-acceptance.
+## Production boundaries and scope
 
-See [architecture](docs/architecture.md), [lifecycle](docs/lifecycle.md), and the public-safe [evidence inventory](docs/evidence-inventory.md).
+- Read-only, bounded evidence collection first. Explain changes, obtain scoped approval, preserve backups and an independent rollback before touching production routes, DNS, firewall, proxies or services.
+- The documented Windows client, Linux VPS and 3X-UI/Xray workflows have environment-specific evidence, **not** universal platform coverage. Linux desktop integration is partial; macOS/OpenWrt automated mutation is not validated.
+- The repository ships documentation, Skills and a static checker, **not** a verified autonomous installer, Cloudflare MCP, local SSH credential store, or universal production repair tool.
+- Native Agent tools execute work; docs cannot magically grant access. Never expose provider passwords, API tokens, private keys or subscriptions.
 
-See the [routing and lifecycle diagram](README.md#路由与生命周期).
+Run the static checker from the repository root:
 
-## Support matrix
+~~~bash
+python tests/check_repository.py
+~~~
 
-| Area | Status |
-|---|---|
-| Windows client governance | `ENV_SPECIFIC_REFERENCE` |
-| Linux VPS baseline | `ENV_SPECIFIC_REFERENCE` |
-| 3X-UI + Xray | `ENV_SPECIFIC_REFERENCE` |
-| Shadow Mihomo pattern | `ENV_SPECIFIC_REFERENCE` |
-| Linux client integration | `PARTIAL_REFERENCE` |
-| macOS | `UNVERIFIED` |
-| OpenWrt | `UNVERIFIED_OPTIONAL` |
+It checks repository structure and limited secret patterns; it does not run real Agent activation or VPS tests.
 
-`ENV_SPECIFIC_REFERENCE` means the workflow was derived from and checked against a real environment, but this repository does not claim universal platform validation. `PARTIAL_REFERENCE` has narrower evidence, while `UNVERIFIED` and `UNVERIFIED_OPTIONAL` must not be presented as production-tested adapters.
-
-## Capability limits in v0.1
-
-- **Safe automation:** v0.1 documents safety and rollback principles, but does not provide a general production automation framework.
-- **Generic control planes:** v0.1 implements the 3X-UI + Xray adapter. Other control planes may reuse the methodology, but are not implemented adapters.
-- **VPS tuning:** `vps-baseline` does not tune for performance. `proxy-transport-lab` permits only isolated, single-variable, measurable, reversible experiments.
-
-## Safety and evidence model
-
-The default action class is `READ_ONLY`. Other classes are `CONTROLLED_MUTATION`, `EXPERIMENTAL_SHADOW`, and `PRODUCTION_CHANGE`. Production changes require baseline, backup, a rollback path, one primary change, static validation, apply, runtime validation, and observed-traffic validation. If the control channel depends on the proxy being changed, offline rollback is required.
-
-Evidence precedence is:
-
-```text
-Declared configuration
-    ↓
-Generated configuration
-    ↓
-Runtime state
-    ↓
-Observed traffic
-```
-
-Later evidence outranks earlier declarations. A value in a file does not prove runtime application. See [evidence hierarchy](docs/methodology/evidence-hierarchy.md).
-
-## Secret handling
-
-Never commit real addresses, domains, account names, private keys, UUIDs, protocol credentials, subscription URLs, tokens, panel paths, controller secrets, provider credentials, or exit addresses. Use documentation networks, `example.com`, synthetic fixtures, and `<REDACTED_...>` placeholders. Do not ingest a secret merely to produce a sanitized copy. See [secret handling](docs/methodology/secret-handling.md).
-
-## Workflow checklist
-
-1. Start with `proxy-stack-lifecycle` and record the capability matrix and action class.
-2. Follow the selected next Skill; load only the references required by that branch.
-3. Keep facts, inferences, unknowns, and environment-specific observations separate.
-4. Stop at any unmet backup, rollback, control-channel, or source-of-truth gate.
-5. Finish with `proxy-stack-acceptance`; freeze a passing stack until new failure evidence or a new requirement appears.
-
-## Status
-
-`v0.1 release candidate` — public, knowledge-and-workflow first. Portable install smoke, model-activation evaluation, and broader cross-platform acceptance remain known validation gaps. The repository intentionally has no general production automation framework, CI/CD, telemetry, or package publication.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+See [AGENTS.md](AGENTS.md), [architecture](docs/architecture.md), [security](SECURITY.md), [Chinese README](README.md) and [license](LICENSE).

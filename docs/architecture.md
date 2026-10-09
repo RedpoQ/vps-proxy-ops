@@ -1,25 +1,43 @@
-# Architecture
+# Architecture — decision first, minimum moving parts
 
-The repository is organized along three dimensions.
+The product has three user-facing jobs:
 
-## A. Core lifecycle
+1. **Evaluate**: decide whether a new or existing VPS is worth keeping for the user's ISP, applications, budget and deadline.
+2. **Deploy**: install or integrate the smallest stable, verifiable proxy path on an accepted VPS.
+3. **Repair**: diagnose and restore the failing path without disturbing healthy paths.
 
-Capability discovery → region/path fit → VPS correctness → control/data plane → minimal proxy → client integration → acceptance → freeze.
+Entry: [AGENTS.md](../AGENTS.md). Workflows: [Evaluate](../workflows/evaluate.md), [Deploy](../workflows/deploy.md), [Repair](../workflows/repair.md).
 
-This is the shortest path to a working, explainable stack. Each stage has a PASS gate; a later stage must not be used to conceal a failed earlier one.
+## Runtime concept
 
-## B. Conditional capabilities
+~~~text
+User intent
+    → choose one task workflow
+    → discover actually accessible native shell / OpenSSH / service APIs
+    → collect the minimum decisive evidence
+    → decide / propose authorized change
+    → verify result and stop
+~~~
 
-Implemented conditional branches are domain/DNS/TLS under the 3X-UI + Xray adapter, Cloudflare edge reasoning where applicable, protocol and preferred-edge experiments, shadow testing, benchmark methodology, special egress routing, subscription projection, and client governance. They are not mandatory milestones.
+No separate VPS-side AI, custom SSH protocol, mandatory Cloudflare MCP, mandatory WARP, universal benchmark, persistent local profile or new runtime dependency is needed for these documentation-first workflows. Use OpenSSH's existing config and credential storage. A future helper should be justified by an actual repeated failure or measurable reduction in manual work.
 
-Safe automation is limited to documented safety and rollback principles; v0.1 has no general production automation framework. The only implemented control-plane adapter is 3X-UI + Xray. Other control planes may reuse the lifecycle and methodology, but their adapters are out of scope. `vps-baseline` checks correctness rather than tuning performance; only `proxy-transport-lab` may run isolated, single-variable, measurable, reversible experiments.
+## Existing Skills are specialist references, not eight mandatory steps
 
-## C. Cross-cutting methodology
+The original eight Skills remain available and their content is preserved for agents with Skill integration. Select only those relevant to the user's task: VPS path, OS baseline, 3X-UI/Xray, protocol experiment, special exit, client rules, and final acceptance. The lifecycle Skill remains a fallback for an unknown topology, not a requirement for every narrow fault.
 
-Every stage applies capability discovery, pollution auditing, evidence hierarchy, source-of-truth separation, one-variable changes, controls, shadow testing, ablation, progressive evidence, complexity budgets, secret handling, backup/rollback, fail-closed checks, platform honesty, explicit uncertainty, and freeze rules.
+A reference can guide an Agent but does not grant execution permissions, make a tool installed, or prove that any deployment has run.
 
-## Simplicity by ablation
+## Evidence and recovery
 
-For an optional component, compare the accepted baseline with the treatment and then remove the treatment. If removal preserves acceptance invariants, prefer the simpler architecture. Each CDN, DNS layer, route, script, egress, and automation adds ownership and failure surfaces.
+- User goals and explicit authorization define the requested outcome and allowed mutations.
+- SSH/config/API access identifies what the current Agent can read, not what it may change.
+- For 3X-UI, preserve persistent → generated → Xray runtime → subscription projection distinctions.
+- Current observed traffic is stronger than a historical success claim when assessing current function; measure it at the correct origin.
+- Collect only tests that can affect a keep/refund, deployment or repair decision. Stop once evidence is sufficient.
+- Confirm authorization, backup and independent rollback before production mutations affecting connectivity.
 
-The architecture therefore does not assume that users need Cloudflare, a domain, preferred IPs, multiple protocols, static egress, or a 24-hour soak.
+See [evidence hierarchy](methodology/evidence-hierarchy.md), [rollback](methodology/rollback.md), [secret handling](methodology/secret-handling.md) and [legacy lifecycle](lifecycle.md).
+
+## Verified scope vs intent
+
+This repository presently ships knowledge and workflows with a static repository checker and text-based routing/boundary cases. It does **not** bundle a general autonomous installer, a portable Agent activation guarantee, or a remotely executed production acceptance suite. Statements of deployment or repair success require tool-derived evidence from that specific environment.
